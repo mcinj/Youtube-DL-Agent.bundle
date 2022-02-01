@@ -4,6 +4,7 @@
 import os, hashlib, re, inspect, json
 from io import open
 import json
+import xml.etree.ElementTree as ET
 
 def Start():
     Log("Starting up ...")
@@ -41,19 +42,37 @@ class YoutubeDLAgent(Agent.TV_Shows):
                 filepath, file_extension = os.path.splitext(file)
                 filepath = filepath.strip()
 
-                try:
-                    with open(filepath + ".info.json", encoding="utf-8") as json_file:
-                        data = json.load(json_file)
+                if os.path.exists(filepath + ".info.json"):
+                    try:
+                        with open(filepath + ".info.json", encoding="utf-8") as json_file:
+                            data = json.load(json_file)
 
-                        metadata.title = data['uploader']
-                        metadata.studio = data['uploader']
-                        metadata.summary = data['playlist_title']
+                            metadata.title = data['uploader']
+                            metadata.studio = data['uploader']
+                            metadata.summary = data['playlist_title']
 
-                        break
-                except IOError:
-                    file = ""
-                    Log("Could not access file '{}'".format(filepath + ".info.json"))
-                    continue
+                            break
+                    except IOError:
+                        file = ""
+                        Log("Could not access file '{}'".format(filepath + ".info.json"))
+                        continue
+                elif os.path.exists(filepath + ".nfo"):
+                    try:
+                        with open(filepath + ".nfo", encoding="utf-8") as xml_file:
+                            data = ET.parse(xml_file, parser=ET.XMLParser(encoding='utf-8'))
+                            root = data.getroot()
+                            if root.tag != 'episodedetails':
+                                continue
+                            metadata.title = root.findtext('.//studio')
+                            metadata.studio = root.findtext('.//studio')
+                            metadata.summary = root.findtext('.//studio')
+
+                            break
+                    except IOError:
+                        file = ""
+                        Log("Could not access file '{}'".format(filepath + ".nfo"))
+                        continue
+
             break
 
         @parallelize
@@ -82,24 +101,41 @@ class YoutubeDLAgent(Agent.TV_Shows):
                                 Log("Could not access file '{}'".format(maybeFile))
 
                     # Attempt to open the .info.json file Youtube-DL stores.
-                    try:
-                        with open(filepath + ".info.json", encoding="utf-8") as json_file:
-                            data = json.load(json_file)
+                    if os.path.exists(filepath + ".info.json"):
+                        try:
+                            with open(filepath + ".info.json", encoding="utf-8") as json_file:
+                                data = json.load(json_file)
 
-                            episode.title = data['fulltitle']
-                            episode.summary = data["description"]
+                                episode.title = data['fulltitle']
+                                episode.summary = data["description"]
 
-                            if data['playlist_index']:
-                                episode.absolute_index = data['playlist_index']
+                                if data['playlist_index']:
+                                    episode.absolute_index = data['playlist_index']
 
-                            if data['upload_date']:
-                                episode.originally_available_at = Datetime.ParseDate(data['upload_date']).date()
+                                if data['upload_date']:
+                                    episode.originally_available_at = Datetime.ParseDate(data['upload_date']).date()
 
-                            if data['average_rating']:
-                                episode.rating = (data['average_rating'] * 2)
+                                if data['average_rating']:
+                                    episode.rating = (data['average_rating'] * 2)
 
-                            Log("Processed successfully! This episode was named '{}'".format(data['fulltitle']))
-                    except IOError:
-                        # Attempt to make a title out of the filename
-                        episode.title = re.sub('\[.{11}\]', '', os.path.basename(filepath)).strip()
-                        Log("Could not access file '{}', named the episode '{}'".format(filepath + ".info.json", episode.title))
+                                Log("Processed successfully! This episode was named '{}'".format(data['fulltitle']))
+                        except IOError:
+                            # Attempt to make a title out of the filename
+                            episode.title = re.sub('\[.{11}\]', '', os.path.basename(filepath)).strip()
+                            Log("Could not access file '{}', named the episode '{}'".format(filepath + ".info.json", episode.title))
+                    elif os.path.exists(filepath + ".nfo"):
+                        try:
+                            with open(filepath + ".nfo", encoding="utf-8") as xml_file:
+                                data = data = ET.parse(xml_file, parser=ET.XMLParser(encoding='utf-8'))
+                                root = data.getroot()
+                                if root.tag != 'episodedetails':
+                                    break
+                                episode.title = root.findtext('.//title')
+                                episode.summary = root.findtext('.//plot')
+                                episode.originally_available_at = Datetime.ParseDate(root.findtext('.//aired'))
+
+                        except IOError:
+                            # Attempt to make a title out of the filename
+                            episode.title = re.sub('\[.{11}\]', '', os.path.basename(filepath)).strip()
+                            Log("Could not access file '{}', named the episode '{}'".format(filepath + ".nfo",
+                                                                                            episode.title))
